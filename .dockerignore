@@ -1,0 +1,9 @@
+.dockerignore
+.git
+.gitignore
+.venv
+venv
+data
+dev.ps1
+README.md
+CHANGELOG.md

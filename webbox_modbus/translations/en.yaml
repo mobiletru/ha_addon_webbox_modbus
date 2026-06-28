@@ -1,0 +1,41 @@
+configuration:
+  log_level:
+    name: Log level
+    description: Logging verbosity for WebBox RPC and Modbus communication.
+  scan_subnet:
+    name: Default scan subnet
+    description: /24 prefix for WebBox discovery (e.g. 192.168.1).
+  cloudflare_tunnel_token:
+    name: Cloudflare Tunnel token
+    description: Optional cloudflared sidecar token for remote WebBox UI access.
+  webboxes:
+    name: Pre-seeded WebBoxes
+    description: WebBoxes merged with UI-added entries. UI entries win on host conflicts.
+    fields:
+      name:
+        name: Name
+        description: Friendly name in the dashboard.
+      host:
+        name: Host / IP
+        description: WebBox IP (RPC and Modbus gateway on same host).
+      password:
+        name: User password
+        description: WebBox user password (read-only RPC).
+      installer_password:
+        name: Installer password
+        description: Required for RPC parameter writes and commands.
+      poll_interval:
+        name: Poll interval (s)
+        description: Minimum 30 seconds per SMA WebBox spec.
+      public_url:
+        name: Public URL
+        description: Cloudflare Tunnel URL for Open WebBox button.
+      modbus_port:
+        name: Modbus TCP port
+        description: Usually 502 via WebBox gateway.
+      modbus_unit_id:
+        name: Modbus unit ID
+        description: Usually 3 for inverter via WebBox.
+      modbus_enabled:
+        name: Modbus enabled
+        description: Enable Modbus TCP reads/writes on the WebBox host.
