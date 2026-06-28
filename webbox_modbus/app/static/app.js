@@ -20,6 +20,9 @@ const state = {
     commands: [],
     modbusRegisters: [],
     modbusSummary: null,
+    liveDashboard: null,
+    writableCatalog: null,
+    panelOptions: null,
     parameterFilter: "",
     modbusFilter: "",
     modbusKind: "sensors",
@@ -40,6 +43,7 @@ function setState(partial) {
     if ("commands" in partial) renderCommands();
     if ("parameters" in partial || "parameterFilter" in partial) renderParameters();
     if ("modbusRegisters" in partial || "modbusFilter" in partial || "modbusKind" in partial) renderModbusRegisters();
+    if ("liveDashboard" in partial) renderLiveDashboard();
     if ("snapshot" in partial) renderDualOverview();
     if ("snapshot" in partial) renderCompare();
 }
@@ -418,6 +422,148 @@ async function saveModbusRegister(name, input) {
         await loadModbusRegisters();
     } catch (err) {
         toast(`Modbus write failed: ${err.message}`, "error");
+    }
+}
+
+function syncModbusUnitFields() {
+    const wb = currentWebBox();
+    if (!wb) return;
+    const unit = wb.modbus_unit_id ?? 3;
+    const eu = $("#explorer-unit");
+    const ru = $("#raw-unit");
+    if (eu && !eu.dataset.userEdited) eu.value = String(unit);
+    if (ru && !ru.dataset.userEdited) ru.value = String(unit);
+}
+
+function renderLiveDashboard() {
+    const grid = $("#live-dashboard");
+    if (!grid) return;
+    grid.replaceChildren();
+    const data = state.liveDashboard;
+    if (!data) {
+        grid.append(h("p", { class: "muted" }, "Loading live Modbus dashboard…"));
+        return;
+    }
+    if (!data.online) {
+        grid.append(h("p", { class: "muted" }, data.error || "Modbus offline"));
+        return;
+    }
+    const values = data.values || {};
+    const keys = Object.keys(values).filter((k) => !k.startsWith("_"));
+    if (!keys.length) {
+        grid.append(h("p", { class: "muted" }, "No live values returned."));
+        return;
+    }
+    for (const key of keys) {
+        const row = values[key];
+        grid.append(h("div", { class: "live-dash-card" },
+            h("div", { class: "label" }, row.label || key),
+            h("div", { class: "value" }, `${formatValue(row.value)} ${row.unit || ""}`.trim()),
+            h("div", { class: "addr" }, String(row.address)),
+        ));
+    }
+}
+
+async function loadLiveDashboard() {
+    const wb = currentWebBox();
+    if (!wb || wb.modbus_enabled === false) {
+        setState({ liveDashboard: null });
+        return;
+    }
+    try {
+        const data = await api(`/webboxes/${wb.id}/modbus/dashboard`);
+        setState({ liveDashboard: data });
+    } catch (err) {
+        setState({ liveDashboard: { online: false, error: err.message, values: {} } });
+    }
+}
+
+async function loadWritableCatalog() {
+    try {
+        const data = await api("/catalog/modbus/writable");
+        setState({ writableCatalog: data.setpoints || {}, panelOptions: data.options || {} });
+        const sel = $("#guarded-param");
+        if (!sel) return;
+        sel.replaceChildren();
+        for (const [key, meta] of Object.entries(state.writableCatalog || {})) {
+            sel.append(h("option", { value: key }, `${key} (${meta.min}–${meta.max} ${meta.unit})`));
+        }
+    } catch {
+        setState({ writableCatalog: {}, panelOptions: {} });
+    }
+}
+
+async function doExplorerRead() {
+    const wb = currentWebBox();
+    if (!wb) return;
+    const out = $("#explorer-output");
+    out.textContent = "reading…";
+    const q = new URLSearchParams({
+        address: $("#explorer-address").value,
+        dtype: $("#explorer-dtype").value,
+        fix: $("#explorer-fix").value,
+        unit_id: $("#explorer-unit").value,
+    });
+    try {
+        const data = await api(`/webboxes/${wb.id}/modbus/read?${q}`);
+        out.textContent = JSON.stringify(data, null, 2);
+    } catch (err) {
+        out.textContent = err.message;
+    }
+}
+
+async function guardedWrite(confirm) {
+    const wb = currentWebBox();
+    if (!wb) return;
+    const out = $("#guarded-output");
+    out.textContent = "working…";
+    const body = {
+        param: $("#guarded-param").value,
+        value: parseFloat($("#guarded-value").value),
+        confirm,
+        unit_id: Number($("#explorer-unit").value),
+    };
+    try {
+        const data = await api(`/webboxes/${wb.id}/modbus/write`, {
+            method: "POST",
+            body: JSON.stringify(body),
+        });
+        out.textContent = JSON.stringify(data, null, 2);
+        if (confirm) {
+            toast(data.verified ? "Write verified" : "Write sent (verify mismatch)", data.verified ? "success" : "warning");
+            loadLiveDashboard();
+            loadModbusRegisters();
+        }
+    } catch (err) {
+        out.textContent = err.message;
+    }
+}
+
+async function doRawWrite() {
+    const wb = currentWebBox();
+    if (!wb) return;
+    if (!confirm("RAW write to a live battery inverter. Are you sure?")) return;
+    const out = $("#raw-output");
+    out.textContent = "working…";
+    const words = $("#raw-words").value.split(",").map((s) => {
+        const t = s.trim();
+        return parseInt(t, /[a-f]/i.test(t) ? 16 : 10);
+    });
+    try {
+        const data = await api(`/webboxes/${wb.id}/modbus/write_raw`, {
+            method: "POST",
+            body: JSON.stringify({
+                address: parseInt($("#raw-address").value, 10),
+                words,
+                unit_id: Number($("#raw-unit").value),
+                ack: $("#raw-ack").value,
+                confirm: true,
+            }),
+        });
+        out.textContent = JSON.stringify(data, null, 2);
+        loadLiveDashboard();
+    } catch (err) {
+        out.textContent = err.message;
     }
 }
 
@@ -801,8 +947,11 @@ function selectWebBox(id) {
         commands: [],
     });
     $("#device-detail").classList.add("hidden");
+    syncModbusUnitFields();
     probeStatus(id);
     probeModbusStatus(id);
+    loadLiveDashboard();
+    loadWritableCatalog();
     loadModbusRegisters();
     schedulePolling();
 }
@@ -903,6 +1052,7 @@ function schedulePolling() {
     state.livePollTimer = setInterval(() => {
         probeStatus(state.selectedId);
         probeModbusStatus(state.selectedId);
+        loadLiveDashboard();
         loadModbusRegisters();
         if (state.selectedDeviceKey) {
             loadDeviceData();
@@ -1061,6 +1211,7 @@ function wireEvents() {
         if (!state.selectedId) return;
         probeStatus(state.selectedId);
         probeModbusStatus(state.selectedId);
+        loadLiveDashboard();
         loadModbusRegisters();
         if (state.selectedDeviceKey) {
             loadDeviceData();
@@ -1183,6 +1334,7 @@ function wireEvents() {
         btn.disabled = true;
         try {
             await probeModbusStatus(wb.id);
+            await loadLiveDashboard();
             await loadModbusRegisters();
             if (state.modbusStatus?.online) {
                 toast(`Modbus OK on ${wb.host}:${wb.modbus_port ?? 502}`, "success");
@@ -1196,8 +1348,19 @@ function wireEvents() {
 
     $("#modbus-refresh-btn")?.addEventListener("click", () => {
         probeModbusStatus(state.selectedId);
+        loadLiveDashboard();
         loadModbusRegisters();
     });
+
+    $("#explorer-read-btn")?.addEventListener("click", doExplorerRead);
+    $("#guarded-check-btn")?.addEventListener("click", () => guardedWrite(false));
+    $("#guarded-write-btn")?.addEventListener("click", () => {
+        if (confirm("Write this setpoint to the live inverter?")) guardedWrite(true);
+    });
+    $("#raw-write-btn")?.addEventListener("click", doRawWrite);
+    for (const id of ["explorer-unit", "raw-unit"]) {
+        $(`#${id}`)?.addEventListener("input", (e) => { e.target.dataset.userEdited = "1"; });
+    }
 
 }
 
@@ -1215,6 +1378,7 @@ async function pollHealth() {
 async function main() {
     wireEvents();
     await pollHealth();
+    await loadWritableCatalog();
     if (state.healthTimer) clearInterval(state.healthTimer);
     state.healthTimer = setInterval(pollHealth, 30000);
     await loadWebBoxes();

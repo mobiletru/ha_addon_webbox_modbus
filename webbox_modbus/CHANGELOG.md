@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.0
+
+- Integrate webbox-panel features into the main dashboard: live verified map, register explorer, guarded setpoint writes, ack-gated raw write
+- Add `grid_guard_code` and `raw_write_ack` add-on configuration options
+
 ## 1.3.0
 
 - WebBox-level Modbus panel showing all 141 SI6048MBP registers (86 sensors, 55 settings)

@@ -17,6 +17,14 @@ from . import __version__
 from .crosswalk import crosswalk_catalog
 from .parameters import enrich_parameters, get_commands, parameter_catalog
 from .profile_loader import catalog_summary, filter_catalog, register_catalog
+from .panel_modbus import (
+    live_register_catalog,
+    read_generic_register,
+    read_live_dashboard,
+    write_guarded_setpoint,
+    write_raw_register,
+    writable_catalog,
+)
 from .services import (
     build_snapshot,
     dual_write_parameter,
@@ -111,6 +119,28 @@ class ScanRequest(BaseModel):
     subnet: str | None = None
 
 
+class ModbusExplorerQuery(BaseModel):
+    address: int = Field(ge=0, le=65533)
+    dtype: str = "U32"
+    fix: int = Field(default=0, ge=0, le=6)
+    unit_id: int | None = Field(default=None, ge=0, le=247)
+
+
+class GuardedWriteRequest(BaseModel):
+    param: str
+    value: float
+    confirm: bool = False
+    unit_id: int | None = Field(default=None, ge=0, le=247)
+
+
+class RawWriteRequest(BaseModel):
+    address: int = Field(ge=0, le=65533)
+    words: list[int]
+    ack: str = ""
+    confirm: bool = False
+    unit_id: int | None = Field(default=None, ge=0, le=247)
+
+
 class CommandRequest(BaseModel):
     command: str | None = None
     channel: str | None = None
@@ -137,6 +167,20 @@ def _safe(webbox: dict[str, Any]) -> dict[str, Any]:
     out["has_password"] = bool(webbox.get("password"))
     out["has_installer_password"] = bool(webbox.get("installer_password"))
     return out
+
+
+def _panel_options() -> dict[str, Any]:
+    opts = storage.options()
+    raw_ack = str(opts.get("raw_write_ack") or "")
+    return {
+        "grid_guard_code_set": bool(opts.get("grid_guard_code")),
+        "raw_write_enabled": bool(raw_ack),
+    }
+
+
+def _panel_error(result: dict[str, Any]) -> None:
+    if result.get("error"):
+        raise HTTPException(status_code=400, detail=str(result["error"]))
 
 
 if _STATIC_DIR.exists():
@@ -248,6 +292,16 @@ async def sunny_island_catalog() -> list[dict[str, Any]]:
 async def modbus_catalog(kind: str | None = None) -> dict[str, Any]:
     items = filter_catalog(kind)
     return {"summary": catalog_summary(), "registers": items}
+
+
+@app.get("/api/catalog/modbus/live")
+async def modbus_live_catalog() -> list[dict[str, Any]]:
+    return live_register_catalog()
+
+
+@app.get("/api/catalog/modbus/writable")
+async def modbus_writable_catalog() -> dict[str, Any]:
+    return {"setpoints": writable_catalog(), "options": _panel_options()}
 
 
 @app.get("/api/catalog/crosswalk")
@@ -369,6 +423,51 @@ async def modbus_write_register(
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc))
+
+
+@app.get("/api/webboxes/{webbox_id}/modbus/dashboard")
+async def modbus_live_dashboard(webbox_id: str) -> dict[str, Any]:
+    wb = _require(webbox_id)
+    return await read_live_dashboard(wb)
+
+
+@app.get("/api/webboxes/{webbox_id}/modbus/read")
+async def modbus_read_address(
+    webbox_id: str,
+    address: int,
+    dtype: str = "U32",
+    fix: int = 0,
+    unit_id: int | None = None,
+) -> dict[str, Any]:
+    wb = _require(webbox_id)
+    result = await read_generic_register(wb, address, dtype, fix, unit_id)
+    _panel_error(result)
+    return result
+
+
+@app.post("/api/webboxes/{webbox_id}/modbus/write")
+async def modbus_guarded_write(webbox_id: str, payload: GuardedWriteRequest) -> dict[str, Any]:
+    wb = _require(webbox_id)
+    opts = storage.options()
+    grid_guard_code = str(opts.get("grid_guard_code") or "")
+    result = await write_guarded_setpoint(
+        wb, payload.param, payload.value, payload.confirm, payload.unit_id, grid_guard_code
+    )
+    _panel_error(result)
+    return result
+
+
+@app.post("/api/webboxes/{webbox_id}/modbus/write_raw")
+async def modbus_raw_write(webbox_id: str, payload: RawWriteRequest) -> dict[str, Any]:
+    wb = _require(webbox_id)
+    opts = storage.options()
+    raw_ack = str(opts.get("raw_write_ack") or "")
+    words = [int(x) & 0xFFFF for x in payload.words]
+    result = await write_raw_register(
+        wb, payload.address, words, payload.ack, payload.confirm, payload.unit_id, raw_ack
+    )
+    _panel_error(result)
+    return result
 
 
 @app.get("/api/webboxes/{webbox_id}/snapshot")

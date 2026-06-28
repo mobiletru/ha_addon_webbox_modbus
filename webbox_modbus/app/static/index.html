@@ -64,8 +64,60 @@
                     <header class="panel-header modbus-panel-header">
                         <div>
                             <h3>Modbus · Sunny Island 6048</h3>
-                            <p id="modbus-panel-subtitle" class="muted tab-intro">All sensors and settings from SI6048MBP.xml via TCP port 502.</p>
+                            <p id="modbus-panel-subtitle" class="muted tab-intro">Live dashboard, full profile, register explorer, and guarded writes on port 502.</p>
                         </div>
+                    </header>
+
+                    <div class="panel-subsection">
+                        <h4 class="subsection-title">Live dashboard</h4>
+                        <p class="muted tab-intro">Verified register map — SOC, battery, inverter, grid (auto-refresh).</p>
+                        <div id="live-dashboard" class="live-dashboard"></div>
+                    </div>
+
+                    <div class="panel-subsection">
+                        <h4 class="subsection-title">Register explorer</h4>
+                        <div class="explorer-form row-controls">
+                            <label>Address <input id="explorer-address" type="number" value="30845" min="0" max="65533" /></label>
+                            <label>Type
+                                <select id="explorer-dtype">
+                                    <option>U16</option><option>S16</option>
+                                    <option selected>U32</option><option>S32</option>
+                                    <option>U64</option><option>S64</option>
+                                </select>
+                            </label>
+                            <label>FIX (÷10ⁿ) <input id="explorer-fix" type="number" value="0" min="0" max="6" /></label>
+                            <label>Unit id <input id="explorer-unit" type="number" value="3" min="0" max="247" /></label>
+                            <button id="explorer-read-btn" class="btn btn-primary" type="button">Read</button>
+                        </div>
+                        <pre id="explorer-output" class="code-output muted">Probe any address — SI parameters are often in the 47xx–56xx range on some firmware.</pre>
+                    </div>
+
+                    <div class="panel-subsection">
+                        <h4 class="subsection-title">Guarded setpoint write</h4>
+                        <div class="write-form row-controls">
+                            <label>Setpoint <select id="guarded-param"></select></label>
+                            <label>Value <input id="guarded-value" type="number" step="0.1" /></label>
+                            <button id="guarded-check-btn" class="btn btn-ghost" type="button">Check</button>
+                            <button id="guarded-write-btn" class="btn btn-primary" type="button">Write &amp; verify</button>
+                        </div>
+                        <pre id="guarded-output" class="code-output muted"></pre>
+                    </div>
+
+                    <details class="panel-subsection raw-write-section">
+                        <summary class="subsection-title warn-summary">Advanced: raw register write</summary>
+                        <div class="write-form row-controls">
+                            <label>Address <input id="raw-address" type="number" min="0" max="65533" /></label>
+                            <label>Words (comma) <input id="raw-words" placeholder="0,4950" /></label>
+                            <label>Unit <input id="raw-unit" type="number" value="3" min="0" max="247" /></label>
+                            <label>Ack token <input id="raw-ack" type="password" autocomplete="off" /></label>
+                            <button id="raw-write-btn" class="btn btn-danger" type="button">Raw write</button>
+                        </div>
+                        <p class="muted tab-intro">Requires <code>raw_write_ack</code> in add-on Configuration. Refused for clamped safety registers.</p>
+                        <pre id="raw-output" class="code-output muted"></pre>
+                    </details>
+
+                    <div class="panel-subsection">
+                        <h4 class="subsection-title">Full profile · SI6048MBP.xml</h4>
                         <div class="modbus-toolbar">
                             <div class="filter-chips" role="group" aria-label="Register filter">
                                 <button type="button" class="chip active" data-modbus-kind="sensors">Sensors</button>
@@ -77,7 +129,7 @@
                             <button id="modbus-test-btn" class="btn btn-ghost" type="button">Test port 502</button>
                             <button id="modbus-refresh-btn" class="btn btn-ghost" type="button">↻ Refresh</button>
                         </div>
-                    </header>
+                    </div>
                     <div id="modbus-table" class="modbus-table"></div>
                 </section>
 
