@@ -1,5 +1,5 @@
 name: WebBox Modbus Dashboard
-version: "1.0.0"
+version: "1.0.1"
 slug: webbox_modbus
 description: Sunny WebBox dashboard with JSON-RPC and Modbus TCP for Sunny Island 6048 monitoring and parameter control.
 url: https://github.com/mobiletru/ha_addon_webbox_modbus

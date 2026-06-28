@@ -143,13 +143,13 @@ if _STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
 
-@app.get("/", include_in_schema=False)
-async def index() -> Response:
+@app.get("/", include_in_schema=False, response_model=None)
+async def index():
     return Response(content=_INDEX_HTML, media_type="text/html")
 
 
 @app.get("/favicon.ico", include_in_schema=False, response_model=None)
-async def favicon() -> Response:
+async def favicon():
     icon = _STATIC_DIR / "favicon.svg"
     if icon.exists():
         return FileResponse(icon)
