@@ -317,23 +317,18 @@ function renderModbusRegisters() {
             lastCategory = category;
         }
         const isWrite = reg.write;
-        let valueEl;
+        let valueEl = h("span", { class: `modbus-readonly ${reg.value != null ? "has-value" : "no-value"}` },
+            reg.value != null ? `${formatValue(reg.value)}` : "—");
         if (isWrite) {
-            valueEl = h("input", { type: "text", value: reg.value ?? "", class: "modbus-input", "data-name": reg.name });
-        } else {
-            valueEl = h("span", { class: `modbus-readonly ${reg.value != null ? "has-value" : "no-value"}` },
-                reg.value != null ? `${formatValue(reg.value)}` : "—");
+            valueEl = h("span", { class: "modbus-readonly muted", title: "Use Guarded setpoint write or RPC Parameters" }, "W (via Guarded/RPC)");
         }
-        const saveBtn = isWrite
-            ? h("button", { class: "btn btn-primary btn-sm", onclick: () => saveModbusRegister(reg.name, valueEl) }, "Save")
-            : null;
         table.append(h("div", { class: "modbus-row" },
             h("span", { class: "mono" }, String(reg.address)),
             h("span", { class: "mono name" }, reg.name),
             h("span", {}, valueEl),
             h("span", {}, reg.unit || "—"),
             h("span", {}, isWrite ? "W" : "R"),
-            h("span", {}, saveBtn),
+            h("span", {}, null),
         ));
     }
 }
@@ -360,38 +355,48 @@ function renderCompare() {
 }
 
 async function probeModbusStatus(id) {
+    if (state.selectedId === id && currentWebBox()?.modbus_enabled !== false) {
+        await loadModbusBundle();
+        return;
+    }
     const wb = state.webboxes.find((w) => w.id === id);
     if (!wb || wb.modbus_enabled === false) {
         if (state.selectedId === id) setState({ modbusStatus: { online: false, error: "Modbus disabled" } });
+    }
+}
+
+async function loadModbusBundle() {
+    const wb = currentWebBox();
+    if (!wb || wb.modbus_enabled === false) {
+        setState({ modbusRegisters: [], modbusSummary: null, liveDashboard: null, modbusStatus: null });
         return;
     }
     try {
-        const result = await api(`/webboxes/${id}/modbus/status`);
-        if (state.selectedId === id) setState({ modbusStatus: result });
+        const kind = state.modbusKind || "sensors";
+        const data = await api(`/webboxes/${wb.id}/modbus/bundle?kind=${encodeURIComponent(kind)}`);
+        setState({
+            modbusRegisters: data.registers || [],
+            modbusSummary: data.summary || null,
+            liveDashboard: data.live || null,
+            modbusStatus: {
+                online: data.online,
+                error: data.error,
+                port: data.port,
+                unit_id: data.unit_id,
+            },
+        });
     } catch (err) {
-        if (state.selectedId === id) setState({ modbusStatus: { online: false, error: err.message } });
+        setState({ modbusRegisters: [], liveDashboard: { online: false, error: err.message, values: {} } });
+        toast(`Modbus read failed: ${err.message}`, "error");
     }
 }
 
 async function loadModbusRegisters() {
-    const wb = currentWebBox();
-    if (!wb || wb.modbus_enabled === false) {
-        setState({ modbusRegisters: [], modbusSummary: null });
-        return;
-    }
-    try {
-        const kind = state.modbusKind === "all" ? "" : state.modbusKind;
-        const qs = kind ? `?kind=${encodeURIComponent(kind)}` : "";
-        const data = await api(`/webboxes/${wb.id}/modbus/registers${qs}`);
-        setState({
-            modbusRegisters: data.registers || [],
-            modbusSummary: data.summary || null,
-            modbusStatus: { online: data.online, error: data.error, port: data.port, unit_id: data.unit_id },
-        });
-    } catch (err) {
-        setState({ modbusRegisters: [] });
-        toast(`Modbus read failed: ${err.message}`, "error");
-    }
+    return loadModbusBundle();
+}
+
+async function loadLiveDashboard() {
+    return loadModbusBundle();
 }
 
 async function loadSnapshot() {
@@ -405,23 +410,6 @@ async function loadSnapshot() {
         setState({ snapshot: snap });
     } catch (err) {
         setState({ snapshot: null });
-    }
-}
-
-async function saveModbusRegister(name, input) {
-    const wb = currentWebBox();
-    if (!wb) return;
-    const raw = input.value;
-    const value = raw === "" ? null : (Number.isNaN(Number(raw)) ? raw : Number(raw));
-    try {
-        await api(`/webboxes/${wb.id}/modbus/registers/${encodeURIComponent(name)}`, {
-            method: "PUT",
-            body: JSON.stringify({ value }),
-        });
-        toast(`Updated ${name}`, "success");
-        await loadModbusRegisters();
-    } catch (err) {
-        toast(`Modbus write failed: ${err.message}`, "error");
     }
 }
 
@@ -461,20 +449,6 @@ function renderLiveDashboard() {
             h("div", { class: "value" }, `${formatValue(row.value)} ${row.unit || ""}`.trim()),
             h("div", { class: "addr" }, String(row.address)),
         ));
-    }
-}
-
-async function loadLiveDashboard() {
-    const wb = currentWebBox();
-    if (!wb || wb.modbus_enabled === false) {
-        setState({ liveDashboard: null });
-        return;
-    }
-    try {
-        const data = await api(`/webboxes/${wb.id}/modbus/dashboard`);
-        setState({ liveDashboard: data });
-    } catch (err) {
-        setState({ liveDashboard: { online: false, error: err.message, values: {} } });
     }
 }
 
@@ -531,8 +505,7 @@ async function guardedWrite(confirm) {
         out.textContent = JSON.stringify(data, null, 2);
         if (confirm) {
             toast(data.verified ? "Write verified" : "Write sent (verify mismatch)", data.verified ? "success" : "warning");
-            loadLiveDashboard();
-            loadModbusRegisters();
+            loadModbusBundle();
         }
     } catch (err) {
         out.textContent = err.message;
@@ -561,7 +534,7 @@ async function doRawWrite() {
             }),
         });
         out.textContent = JSON.stringify(data, null, 2);
-        loadLiveDashboard();
+        loadModbusBundle();
     } catch (err) {
         out.textContent = err.message;
     }
@@ -949,10 +922,8 @@ function selectWebBox(id) {
     $("#device-detail").classList.add("hidden");
     syncModbusUnitFields();
     probeStatus(id);
-    probeModbusStatus(id);
-    loadLiveDashboard();
+    loadModbusBundle();
     loadWritableCatalog();
-    loadModbusRegisters();
     schedulePolling();
 }
 
@@ -1051,9 +1022,7 @@ function schedulePolling() {
     const intervalMs = Math.max(30000, (wb?.poll_interval || 30) * 1000);
     state.livePollTimer = setInterval(() => {
         probeStatus(state.selectedId);
-        probeModbusStatus(state.selectedId);
-        loadLiveDashboard();
-        loadModbusRegisters();
+        loadModbusBundle();
         if (state.selectedDeviceKey) {
             loadDeviceData();
             if (state.activeTab === "dual" || state.activeTab === "compare") loadSnapshot();
@@ -1210,9 +1179,7 @@ function wireEvents() {
     $("#refresh-btn").addEventListener("click", () => {
         if (!state.selectedId) return;
         probeStatus(state.selectedId);
-        probeModbusStatus(state.selectedId);
-        loadLiveDashboard();
-        loadModbusRegisters();
+        loadModbusBundle();
         if (state.selectedDeviceKey) {
             loadDeviceData();
             loadParameters();
@@ -1323,7 +1290,7 @@ function wireEvents() {
         chip.addEventListener("click", () => {
             for (const c of $$("[data-modbus-kind]")) c.classList.toggle("active", c === chip);
             setState({ modbusKind: chip.dataset.modbusKind });
-            loadModbusRegisters();
+            loadModbusBundle();
         });
     }
 
@@ -1333,9 +1300,7 @@ function wireEvents() {
         const btn = $("#modbus-test-btn");
         btn.disabled = true;
         try {
-            await probeModbusStatus(wb.id);
-            await loadLiveDashboard();
-            await loadModbusRegisters();
+            await loadModbusBundle();
             if (state.modbusStatus?.online) {
                 toast(`Modbus OK on ${wb.host}:${wb.modbus_port ?? 502}`, "success");
             } else {
@@ -1347,9 +1312,7 @@ function wireEvents() {
     });
 
     $("#modbus-refresh-btn")?.addEventListener("click", () => {
-        probeModbusStatus(state.selectedId);
-        loadLiveDashboard();
-        loadModbusRegisters();
+        loadModbusBundle();
     });
 
     $("#explorer-read-btn")?.addEventListener("click", doExplorerRead);

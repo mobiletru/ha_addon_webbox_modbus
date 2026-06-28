@@ -93,11 +93,13 @@ def catalog_summary() -> dict[str, int]:
 
 def filter_catalog(kind: str | None = None) -> list[dict[str, Any]]:
     items = register_catalog()
+    if kind is None or kind == "all":
+        return items
     if kind == "sensors":
         return [i for i in items if not i["write"]]
     if kind == "settings":
         return [i for i in items if i["write"]]
-    return items
+    raise ValueError(f"Unknown register kind {kind!r}; use sensors, settings, or all")
 
 
 def _register_category(address: int) -> str:

@@ -17,6 +17,8 @@ from . import __version__
 from .crosswalk import crosswalk_catalog
 from .parameters import enrich_parameters, get_commands, parameter_catalog
 from .profile_loader import catalog_summary, filter_catalog, register_catalog
+from .modbus_bundle import read_modbus_bundle
+from .modbus_policy import assert_installer_password, assert_profile_register_write
 from .panel_modbus import (
     live_register_catalog,
     read_generic_register,
@@ -179,8 +181,17 @@ def _panel_options() -> dict[str, Any]:
 
 
 def _panel_error(result: dict[str, Any]) -> None:
-    if result.get("error"):
-        raise HTTPException(status_code=400, detail=str(result["error"]))
+    err = result.get("error")
+    if not err:
+        return
+    msg = str(err)
+    if msg.startswith("cannot reach") or "connect" in msg.lower():
+        raise HTTPException(status_code=502, detail=msg)
+    raise HTTPException(status_code=400, detail=msg)
+
+
+def _require_modbus_write(wb: dict[str, Any]) -> None:
+    assert_installer_password(wb)
 
 
 if _STATIC_DIR.exists():
@@ -290,7 +301,10 @@ async def sunny_island_catalog() -> list[dict[str, Any]]:
 
 @app.get("/api/catalog/modbus")
 async def modbus_catalog(kind: str | None = None) -> dict[str, Any]:
-    items = filter_catalog(kind)
+    try:
+        items = filter_catalog(kind)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     return {"summary": catalog_summary(), "registers": items}
 
 
@@ -386,7 +400,10 @@ async def modbus_status(webbox_id: str) -> dict[str, Any]:
 @app.get("/api/webboxes/{webbox_id}/modbus/registers")
 async def modbus_registers(webbox_id: str, kind: str | None = None) -> dict[str, Any]:
     wb = _require(webbox_id)
-    catalog = filter_catalog(kind)
+    try:
+        catalog = filter_catalog(kind)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     names = [r["name"] for r in catalog]
     live = await read_modbus_registers(wb, names)
     rows = []
@@ -407,10 +424,15 @@ async def modbus_registers(webbox_id: str, kind: str | None = None) -> dict[str,
 
 
 @app.put("/api/webboxes/{webbox_id}/modbus/registers/{name}")
-async def modbus_write_register(
+async def modbus_write_register_route(
     webbox_id: str, name: str, payload: ModbusRegisterUpdate
 ) -> dict[str, Any]:
     wb = _require(webbox_id)
+    try:
+        _require_modbus_write(wb)
+        assert_profile_register_write(name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     try:
         await write_modbus_register(wb, name, payload.value)
         reread = await read_modbus_registers(wb, [name])
@@ -423,6 +445,15 @@ async def modbus_write_register(
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc))
+
+
+@app.get("/api/webboxes/{webbox_id}/modbus/bundle")
+async def modbus_bundle(webbox_id: str, kind: str | None = None) -> dict[str, Any]:
+    wb = _require(webbox_id)
+    try:
+        return await read_modbus_bundle(wb, kind)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @app.get("/api/webboxes/{webbox_id}/modbus/dashboard")
@@ -448,6 +479,10 @@ async def modbus_read_address(
 @app.post("/api/webboxes/{webbox_id}/modbus/write")
 async def modbus_guarded_write(webbox_id: str, payload: GuardedWriteRequest) -> dict[str, Any]:
     wb = _require(webbox_id)
+    try:
+        _require_modbus_write(wb)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     opts = storage.options()
     grid_guard_code = str(opts.get("grid_guard_code") or "")
     result = await write_guarded_setpoint(
@@ -460,6 +495,12 @@ async def modbus_guarded_write(webbox_id: str, payload: GuardedWriteRequest) -> 
 @app.post("/api/webboxes/{webbox_id}/modbus/write_raw")
 async def modbus_raw_write(webbox_id: str, payload: RawWriteRequest) -> dict[str, Any]:
     wb = _require(webbox_id)
+    try:
+        _require_modbus_write(wb)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not payload.words:
+        raise HTTPException(status_code=400, detail="words must not be empty")
     opts = storage.options()
     raw_ack = str(opts.get("raw_write_ack") or "")
     words = [int(x) & 0xFFFF for x in payload.words]

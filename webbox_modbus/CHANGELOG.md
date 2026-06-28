@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.2
+
+- Unified Modbus write policy: block profile-table and raw writes to setting registers
+- Guarded setpoint / raw writes require installer password; panel restricted to admins
+- Single `/modbus/bundle` poll (one TCP connection) replaces triple Modbus polling
+- Connection errors return HTTP 502; invalid `kind` query returns 400
+
 ## 1.4.1
 
 - Version bump; sync `io.hass.version` build label with add-on manifest

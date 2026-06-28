@@ -116,6 +116,15 @@ async def dual_write_parameter(
         await write_rpc_parameter(webbox, device_key, entry.rpc_key, value)
         written_via.append("rpc")
     if via in ("modbus", "both"):
+        from .modbus_policy import assert_installer_password, get_register, is_guarded_panel_address
+
+        assert_installer_password(webbox)
+        reg = get_register(entry.modbus_name)
+        if is_guarded_panel_address(reg.address):
+            raise ValueError(
+                f"{entry.modbus_name} (@{reg.address}) must be written via Guarded setpoint write, "
+                "not dual-write or profile table."
+            )
         await write_modbus_register(webbox, entry.modbus_name, value)
         written_via.append("modbus")
 

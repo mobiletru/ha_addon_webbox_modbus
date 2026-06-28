@@ -10,6 +10,7 @@ from typing import Any
 from pymodbus.client import ModbusTcpClient
 
 from .live_registers import DEFAULT_MAP, decode_live_reg
+from .modbus_policy import assert_raw_write_address
 from .panel_writable import (
     GRID_GUARD_REG,
     WRITABLE,
@@ -105,8 +106,11 @@ def _read_generic(
     dtype = dtype.upper()
     if dtype not in _DTYPE_WORDS:
         return {"error": f"unknown data type {dtype}"}
-    if not (0 <= address <= 65533):
-        return {"error": f"address {address} out of range (0-65533)"}
+    word_count = _DTYPE_WORDS[dtype]
+    if not (0 <= address <= 65535):
+        return {"error": f"address {address} out of range (0-65535)"}
+    if address + word_count - 1 > 65535:
+        return {"error": f"address {address} with {dtype} extends past register 65535"}
     if not (0 <= unit <= 247):
         return {"error": f"unit {unit} out of range (0-247)"}
 
@@ -233,12 +237,11 @@ def _write_raw(
     if ack != raw_write_ack:
         return {"error": "bad ack token — raw write refused"}
 
-    safety_addrs = {r.address for r in WRITABLE.values()}
-    if address in safety_addrs:
-        return {
-            "error": f"address {address} is a clamped safety register — "
-            "use the guarded setpoint write, not raw",
-        }
+    try:
+        assert_raw_write_address(address)
+    except ValueError as exc:
+        return {"error": str(exc)}
+
     if not confirm:
         return {"dry_run": True, "address": address, "words": words, "unit": unit}
 
