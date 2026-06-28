@@ -19,6 +19,7 @@ from .parameters import enrich_parameters, get_commands, parameter_catalog
 from .profile_loader import catalog_summary, filter_catalog, register_catalog
 from .modbus_bundle import read_modbus_bundle
 from .modbus_policy import assert_installer_password, assert_profile_register_write
+from .live_registers_sb import catalog_meta as sb_live_meta, live_register_catalog as sb_live_register_catalog
 from .panel_modbus import (
     live_register_catalog,
     read_generic_register,
@@ -311,6 +312,11 @@ async def modbus_catalog(kind: str | None = None) -> dict[str, Any]:
 @app.get("/api/catalog/modbus/live")
 async def modbus_live_catalog() -> list[dict[str, Any]]:
     return live_register_catalog()
+
+
+@app.get("/api/catalog/modbus/live/sb")
+async def modbus_sb_live_catalog() -> dict[str, Any]:
+    return {"meta": sb_live_meta(), "registers": sb_live_register_catalog()}
 
 
 @app.get("/api/catalog/modbus/writable")

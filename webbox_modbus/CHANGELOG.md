@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.4
+
+- Add Sunny Boy live dashboard register map (16 registers) from MODBUS-HTML SB30-77-1SP-US-40 V11
+- New API: `GET /api/catalog/modbus/live/sb` with profile metadata and register catalog
+
 ## 1.4.3
 
 - Faster startup: live dashboard loads first (`profile=false`), full SI6048 profile loads in background
