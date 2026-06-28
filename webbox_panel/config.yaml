@@ -1,0 +1,29 @@
+name: WebBox Sunny Island Modbus Panel
+version: "0.2.0"
+slug: webbox_panel
+description: >-
+  Full Modbus panel for the Sunny Island via the WebBox gateway: live
+  dashboard, read-any-register explorer (walk the SI parameter table), guarded
+  setpoint writes (clamped + verified), and an optional ack-gated raw write.
+url: https://github.com/mobiletru/ha_addon_webbox_modbus
+arch: [aarch64, amd64, armv7]
+init: false
+host_network: true
+ingress: true
+ingress_port: 8100
+panel_icon: mdi:transmission-tower
+panel_title: SI Modbus
+options:
+  webbox_host: 192.168.100.180
+  webbox_port: 502
+  webbox_unit: 23
+  webbox_timeout: 5
+  raw_write_ack: ""
+  grid_guard_code: ""
+schema:
+  webbox_host: str
+  webbox_port: port
+  webbox_unit: int(0,247)
+  webbox_timeout: float
+  raw_write_ack: str?
+  grid_guard_code: str?

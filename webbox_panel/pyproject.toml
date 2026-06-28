@@ -1,0 +1,11 @@
+[project]
+name = "webbox-panel"
+version = "0.1.0"
+description = "Full WebBox / Sunny Island Modbus panel — dashboard, register explorer, guarded + raw writes"
+requires-python = ">=3.9"
+dependencies = ["pymodbus>=3.0", "flask>=2.0", "gunicorn>=20"]
+[project.scripts]
+webbox-panel = "webbox_panel.app:main"
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"

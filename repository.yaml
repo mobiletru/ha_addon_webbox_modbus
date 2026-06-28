@@ -1,4 +1,4 @@
 name: WebBox Modbus Dashboard
 url: https://github.com/mobiletru/ha_addon_webbox_modbus
 maintainer: mobiletru
-description: Home Assistant OS add-on — Sunny WebBox RPC + Modbus TCP dashboard for Sunny Island 6048
+description: Home Assistant OS add-ons — Sunny WebBox RPC + Modbus dashboard, and SI Modbus panel (register explorer + guarded writes)
